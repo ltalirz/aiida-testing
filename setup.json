@@ -27,14 +27,11 @@
     "cache"
   ],
   "include_package_data": true,
-  "setup_requires": [
-    "reentry"
-  ],
-  "reentry_register": true,
   "install_requires": [
     "aiida-core>=1.0.0<2.0.0",
     "pytest>=3.6",
-    "pyyaml~=5.1.2"
+    "pyyaml~=5.1.2",
+    "voluptuous~=0.11.7"
   ],
   "extras_require": {
     "docs": [
