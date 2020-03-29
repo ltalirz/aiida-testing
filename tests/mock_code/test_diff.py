@@ -114,3 +114,32 @@ def test_broken_code(mock_code_factory, generate_diff_inputs):  # pylint: disabl
     )
     assert node.is_finished_ok
     check_diff_output(res)
+
+
+def test_broken_code_require(mock_code_factory):
+    """
+    Check that the mock code raises, if executable path is required but not provided.
+    """
+
+    with pytest.raises(ValueError):
+        mock_code_factory(
+            label='diff-broken',
+            data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+            entry_point=CALC_ENTRY_POINT,
+            ignore_files=('_aiidasubmit.sh', 'file?.txt'),
+            config_action='require',
+        )
+
+
+def test_broken_code_generate(mock_code_factory, testing_config):
+    """
+    Check that mock code adds missing key to testing config, when asked to 'generate'.
+    """
+    mock_code_factory(
+        label='diff-broken',
+        data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+        entry_point=CALC_ENTRY_POINT,
+        ignore_files=('_aiidasubmit.sh', 'file?.txt'),
+        config_action='generate',
+    )
+    assert 'diff-broken' in testing_config.get('mock_code')

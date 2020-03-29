@@ -35,7 +35,7 @@ First, we want to define a fixture for our mocked code in the ``conftest.py``:
             ignore_files=('_aiidasubmit.sh', 'file*')
         )
         
-Second, we need to tell the mock executable where to find the *actual* ``diff`` executable by creating a ``.aiida-testing-config.yml`` file in the top level of our plugin.
+Second, we need to tell the mock executable where to find the *actual* ``diff`` executable by creating a ``.testing-config-action.yml`` file in the top level of our plugin.
 
 .. note::
     This step is needed **only** when we want to use the actual executable to (re)generate test data.
@@ -73,6 +73,10 @@ Finally, we can use our fixture in our tests as if it would provide a normal :py
 
 When running the test for the first time, ``aiida-mock-code`` will pipe through to the actual ``diff`` executable.
 The next time, it will recognise the inputs and directly use the outputs cached in the data directory.
+
+.. note::
+    ``aiida-mock-code`` "recognizes" calculations by computing a hash of the working directory of the calculation (as prepared by the calculation input plugin).
+    It does *not* rely on the hashing mechanism of AiiDA.
 
 Don't forget to add your data directory to your test data in order to make them available in CI and to other users of your plugin!
 

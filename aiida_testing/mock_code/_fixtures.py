@@ -8,78 +8,89 @@ import shutil
 import inspect
 import pathlib
 import typing as ty
-
+import click
 import pytest
 
-from ._env_keys import EnvKeys
-from .._config import Config, CONFIG_FILE_NAME
+from aiida.orm import Code
 
-__all__ = ("mock_code_factory", "mock_require_config", "mock_write_config")
+from ._env_keys import EnvKeys
+from .._config import Config, CONFIG_FILE_NAME, ConfigActions
+
+__all__ = (
+    "pytest_addoption",
+    "testing_config_action",
+    "mock_regenerate_test_data",
+    "testing_config",
+    "mock_code_factory",
+)
 
 
 def pytest_addoption(parser):
-    """Add pytest options for managing testing config file."""
+    """Add pytest command line options."""
     parser.addoption(
-        "--require-aiida-testing-config",
-        action="store_true",
-        default=False,
-        help="Fail if testing configuration is missing for any mocked code."
+        "--testing-config-action",
+        type=click.Choice((c.value for c in ConfigActions)),
+        default=ConfigActions.READ.value,
+        help=f"Read {CONFIG_FILE_NAME} config file if present ('read'), require config file ('require') or " \
+             "generate new config file ('generate').",
     )
     parser.addoption(
-        "--write-aiida-testing-config",
-        action="store_true",
-        default=False,
-        help="(Over-)write testing configuration."
+        "--regenerate-test-data", action="store_true", default=False, help="Regenerate test data."
     )
 
 
 @pytest.fixture(scope='session')
-def mock_require_config(request):
-    return request.config.getoption("--require-aiida-testing-config")
+def testing_config_action(request):
+    return request.config.getoption("--testing-config-action")
 
 
 @pytest.fixture(scope='session')
-def mock_write_config(request):
-    return request.config.getoption("--write-aiida-testing-config")
+def mock_regenerate_test_data(request):
+    return request.config.getoption("--regenerate-test-data")
 
 
 @pytest.fixture(scope='session')
-def testing_config(mock_write_config, mock_require_config):  # pylint: disable=redefined-outer-name
-    """Get aiida-testing-config.
+def testing_config(testing_config_action):  # pylint: disable=redefined-outer-name
+    """Get testing-config-action.
 
-    Specifying CLI parameter --require-aiida-testing-config will raise if no config file is found.
-    Specifying CLI parameter --write-aiida-testing-config results in config
+    Specifying CLI parameter --testing-config-action will raise if no config file is found.
+    Specifying CLI parameter --generate-testing-config-action results in config
     template being written during test run.
     """
     config = Config.from_file()
 
-    if not config and mock_require_config:
+    if not config and testing_config_action == ConfigActions.REQUIRE.value:
         raise ValueError(f"Unable to find {CONFIG_FILE_NAME}.")
 
     yield config
 
-    if mock_write_config:
+    if testing_config_action == ConfigActions.GENERATE.value:
         config.to_file()
 
 
 @pytest.fixture(scope='function')
-def mock_code_factory(aiida_localhost, mock_require_config, mock_write_config, testing_config):  # pylint: disable=redefined-outer-name
+def mock_code_factory(
+    aiida_localhost, testing_config, testing_config_action, mock_regenerate_test_data
+):  # pylint: disable=redefined-outer-name
     """
     Fixture to create a mock AiiDA Code.
 
-    Specifying CLI parameter --require-aiida-testing-config will raise if a required code label is not found.
-    Specifying CLI parameter --write-aiida-testing-config results in config
+    Specifying CLI parameter --testing-config-action will raise if a required code label is not found.
+    Specifying CLI parameter --generate-testing-config-action results in config
     template being written during test run.
 
     """
-    config = testing_config.get('mock_code', {})
-
     def _get_mock_code(
         label: str,
         entry_point: str,
         data_dir_abspath: ty.Union[str, pathlib.Path],
-        ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh', )
-    ):
+        ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh'),
+        #ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh', '_scheduler-stderr.txt', '_scheduler-stdout.txt',),
+        executable_name: str = '',
+        config: dict = testing_config,
+        config_action: str = testing_config_action,
+        regenerate_test_data: bool = mock_regenerate_test_data,
+    ):  # pylint: disable=too-many-arguments
         """
         Creates a mock AiiDA code. If the same inputs have been run previously,
         the results are copied over from the corresponding sub-directory of
@@ -99,24 +110,41 @@ def mock_code_factory(aiida_localhost, mock_require_config, mock_write_config, t
         ignore_files :
             A list of files which are not copied to the results directory
             when the code is executed.
+        executable_name :
+            Name of code executable to search for in PATH, if configuration file does not specify location already.
+        config :
+            Dict with contents of configuration file
+        config_action :
+            Read config file if present ('read'), require config file ('require') or generate new config file ('generate').
+        generate_config :
+            Generate configuration file template, if it does not yet exist
         """
-        from aiida.orm import Code
-
         # we want to set a custom prepend_text, which is why the code
         # can not be reused.
         code_label = f'mock-{label}-{uuid.uuid4()}'
 
-        executable_path = shutil.which('aiida-mock-code')
-        code_executable = config.get(label, '')
-        if not code_executable and mock_require_config:
+        mock_executable_path = shutil.which('aiida-mock-code')
+        if not mock_executable_path:
             raise ValueError(
-                f"Configuration file does not specify executable code label '{label}'."
+                "'aiida-mock-code' executable not found in the PATH. " +
+                "Have you run `pip install aiida-testing` in this python environment?"
             )
-        if mock_write_config:
-            config[label] = None
+
+        # try determine path to actual code executable
+        mock_code_config = config.get('mock_code', {})
+        if config_action == ConfigActions.REQUIRE.value and label not in mock_code_config:
+            raise ValueError(
+                f"Configuration file {CONFIG_FILE_NAME} does not specify path to executable for code label '{label}'."
+            )
+        code_executable_path = mock_code_config.get(label, 'TO_SPECIFY')
+        if (not code_executable_path) and executable_name:
+            code_executable_path = shutil.which(executable_name) or 'NOT_FOUND'
+        if config_action == ConfigActions.GENERATE.value:
+            mock_code_config[label] = code_executable_path
 
         code = Code(
-            input_plugin_name=entry_point, remote_computer_exec=[aiida_localhost, executable_path]
+            input_plugin_name=entry_point,
+            remote_computer_exec=[aiida_localhost, mock_executable_path]
         )
         code.label = code_label
         code.set_prepend_text(
@@ -124,15 +152,14 @@ def mock_code_factory(aiida_localhost, mock_require_config, mock_write_config, t
                 f"""
                 export {EnvKeys.LABEL.value}={label}
                 export {EnvKeys.DATA_DIR.value}={data_dir_abspath}
-                export {EnvKeys.EXECUTABLE_PATH.value}={code_executable}
+                export {EnvKeys.EXECUTABLE_PATH.value}={code_executable_path}
                 export {EnvKeys.IGNORE_FILES.value}={':'.join(ignore_files)}
+                export {EnvKeys.REGENERATE_DATA.value}={'True' if regenerate_test_data else 'False'}
                 """
             )
         )
 
         code.store()
         return code
-
-    testing_config['mock_code'] = config
 
     return _get_mock_code

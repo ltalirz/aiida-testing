@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Defines a helper for loading the ``.aiida-testing-config.yml``
-configuration file.
+Helpers for managing the ``.aiida-testing-config.yml`` configuration file.
 """
 
 import os
@@ -9,10 +8,20 @@ import pathlib
 import typing as ty
 import collections
 from voluptuous import Schema
+from enum import Enum
 
 import yaml
 
 CONFIG_FILE_NAME = '.aiida-testing-config.yml'
+
+
+class ConfigActions(Enum):
+    """
+    An enum containing the actions to perform on the config file.
+    """
+    READ = 'read'
+    GENERATE = 'generate'
+    REQUIRE = 'require'
 
 
 class Config(collections.abc.MutableMapping):
