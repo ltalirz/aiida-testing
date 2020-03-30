@@ -14,6 +14,8 @@ from aiida.plugins import CalculationFactory, DataFactory
 
 CALC_ENTRY_POINT = 'diff'
 
+TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+
 
 @pytest.fixture
 def generate_diff_inputs(datadir):
@@ -62,13 +64,13 @@ def check_diff_output(result):
 
 def test_basic(mock_code_factory, generate_diff_inputs):  # pylint: disable=redefined-outer-name
     """
-    Basic check of the mock code functionality.
+    Check that mock code takes data from cache, if inputs are recognized.
     """
     mock_code = mock_code_factory(
         label='diff',
-        data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+        data_dir_abspath=TEST_DATA_DIR,
         entry_point=CALC_ENTRY_POINT,
-        ignore_files=('_aiidasubmit.sh', 'file*')
+        ignore_files=('_aiidasubmit.sh', 'file*txt')
     )
 
     res, node = run_get_node(
@@ -80,14 +82,14 @@ def test_basic(mock_code_factory, generate_diff_inputs):  # pylint: disable=rede
 
 def test_inexistent_data(mock_code_factory, generate_diff_inputs):  # pylint: disable=redefined-outer-name
     """
-    Check that the mock code works if there is no existing data.
+    Check that the mock code runs external executable if there is no existing data.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         mock_code = mock_code_factory(
             label='diff',
             data_dir_abspath=temp_dir,
             entry_point=CALC_ENTRY_POINT,
-            ignore_files=('_aiidasubmit.sh', 'file1.txt', 'file2.txt')
+            ignore_files=('_aiidasubmit.sh', 'file*txt')
         )
 
         res, node = run_get_node(
@@ -99,12 +101,11 @@ def test_inexistent_data(mock_code_factory, generate_diff_inputs):  # pylint: di
 
 def test_broken_code(mock_code_factory, generate_diff_inputs):  # pylint: disable=redefined-outer-name
     """
-    Check that the mock code works also when no executable is given,
-    when the result exists already.
+    Check that the mock code works also when no executable is given, if the result exists already.
     """
     mock_code = mock_code_factory(
         label='diff-broken',
-        data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+        data_dir_abspath=TEST_DATA_DIR,
         entry_point=CALC_ENTRY_POINT,
         ignore_files=('_aiidasubmit.sh', 'file?.txt')
     )
@@ -124,7 +125,7 @@ def test_broken_code_require(mock_code_factory):
     with pytest.raises(ValueError):
         mock_code_factory(
             label='diff-broken',
-            data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+            data_dir_abspath=TEST_DATA_DIR,
             entry_point=CALC_ENTRY_POINT,
             ignore_files=('_aiidasubmit.sh', 'file?.txt'),
             config_action='require',
@@ -137,9 +138,31 @@ def test_broken_code_generate(mock_code_factory, testing_config):
     """
     mock_code_factory(
         label='diff-broken',
-        data_dir_abspath=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+        data_dir_abspath=TEST_DATA_DIR,
         entry_point=CALC_ENTRY_POINT,
         ignore_files=('_aiidasubmit.sh', 'file?.txt'),
         config_action='generate',
     )
     assert 'diff-broken' in testing_config.get('mock_code')
+
+
+def test_regenerate_test_data(mock_code_factory, generate_diff_inputs):  # pylint: disable=redefined-outer-name
+    """
+    Check that mock code regenerates test data if asked to do so.
+
+    Note: So far, this only tests that the test still runs fine.
+    Should e.g. check timestamp on test data directory.
+    """
+    mock_code = mock_code_factory(
+        label='diff',
+        data_dir_abspath=TEST_DATA_DIR,
+        entry_point=CALC_ENTRY_POINT,
+        ignore_files=('_aiidasubmit.sh', ),
+        regenerate_test_data=True,
+    )
+
+    res, node = run_get_node(
+        CalculationFactory(CALC_ENTRY_POINT), code=mock_code, **generate_diff_inputs()
+    )
+    assert node.is_finished_ok
+    check_diff_output(res)

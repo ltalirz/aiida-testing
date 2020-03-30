@@ -37,7 +37,10 @@ def run() -> None:
 
     res_dir = pathlib.Path(data_dir) / f"mock-{label}-{hash_digest}"
 
-    if not res_dir.exists() or regenerate_data:
+    if regenerate_data and res_dir.exists():
+        shutil.rmtree(res_dir)
+
+    if not res_dir.exists():
         if not executable_path:
             sys.exit("No existing output, and no executable specified.")
 
