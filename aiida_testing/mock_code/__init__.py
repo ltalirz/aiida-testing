@@ -6,6 +6,7 @@ the executable.
 
 from ._fixtures import *
 
+# Note: This is necessary for the sphinx doc - otherwise it does not find aiida_testing.mock_code.mock_code_factory
 __all__ = (
     "pytest_addoption",
     "testing_config_action",
