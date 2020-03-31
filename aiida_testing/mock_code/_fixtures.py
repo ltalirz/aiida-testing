@@ -132,9 +132,11 @@ def mock_code_factory(
         # can not be reused.
         code_label = f'mock-{label}-{uuid.uuid4()}'
 
-        data_dir_abspath = pathlib.Path(data_dir_abspath).absolute()
-        if not data_dir_abspath.exists():
+        data_dir_pl = pathlib.Path(data_dir_abspath)
+        if not data_dir_pl.exists():
             raise ValueError("Data directory '{}' does not exist".format(data_dir_abspath))
+        if not data_dir_pl.is_absolute():
+            raise ValueError("Please provide absolute path to data directory.")
 
         mock_executable_path = shutil.which('aiida-mock-code')
         if not mock_executable_path:
