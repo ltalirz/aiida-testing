@@ -154,10 +154,10 @@ def mock_code_factory(
         code.set_prepend_text(
             inspect.cleandoc(
                 f"""
-                export {EnvKeys.LABEL.value}={label}
-                export {EnvKeys.DATA_DIR.value}={data_dir_abspath}
-                export {EnvKeys.EXECUTABLE_PATH.value}={code_executable_path}
-                export {EnvKeys.IGNORE_FILES.value}={':'.join(ignore_files)}
+                export {EnvKeys.LABEL.value}="{label}"
+                export {EnvKeys.DATA_DIR.value}="{data_dir_abspath}"
+                export {EnvKeys.EXECUTABLE_PATH.value}="{code_executable_path}"
+                export {EnvKeys.IGNORE_FILES.value}="{':'.join(ignore_files)}"
                 export {EnvKeys.REGENERATE_DATA.value}={'True' if regenerate_test_data else 'False'}
                 """
             )
