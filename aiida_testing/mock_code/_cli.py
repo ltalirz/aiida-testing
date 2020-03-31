@@ -12,16 +12,13 @@ import hashlib
 import subprocess
 import typing as ty
 import fnmatch
-import click
 
 from ._env_keys import EnvKeys
 
 SUBMIT_FILE = '_aiidasubmit.sh'
 
 
-@click.command()
-@click.option('--sanity-check', type=bool, is_flag=True, default=False)
-def run(sanity_check) -> None:  # pylint: disable=too-many-branches
+def run() -> None:
     """
     Run the mock AiiDA code. If the corresponding result exists, it is
     simply copied over to the current working directory. Otherwise,
@@ -29,10 +26,6 @@ def run(sanity_check) -> None:  # pylint: disable=too-many-branches
     launch the "real" code, and then copy the results into the data
     directory.
     """
-    if sanity_check:
-        print("Reached aiida-mock-code script")
-        sys.exit(0)
-
     # Get environment variables
     label = os.environ[EnvKeys.LABEL.value]
     data_dir = os.environ[EnvKeys.DATA_DIR.value]
