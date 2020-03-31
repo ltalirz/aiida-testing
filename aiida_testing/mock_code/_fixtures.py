@@ -7,6 +7,7 @@ import uuid
 import shutil
 import inspect
 import pathlib
+import subprocess
 import typing as ty
 import click
 import pytest
@@ -47,6 +48,14 @@ def testing_config_action(request):
 @pytest.fixture(scope='session')
 def mock_regenerate_test_data(request):
     return request.config.getoption("--regenerate-test-data")
+
+
+@pytest.fixture(scope='session', autouse=True)
+def mock_sanity_check():
+    """Check that aiida-mock-code executable runs."""
+    exit_code = subprocess.call(['aiida-mock-code', '--sanity-check'])
+    if exit_code != 0:
+        raise SystemExit("aiida-mock-code --sanity-check returned nonzero exit code.")
 
 
 @pytest.fixture(scope='session')
