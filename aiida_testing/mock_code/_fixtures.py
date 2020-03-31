@@ -60,11 +60,10 @@ def mock_sanity_check():
 
 @pytest.fixture(scope='session')
 def testing_config(testing_config_action):  # pylint: disable=redefined-outer-name
-    """Get testing-config-action.
+    """Get content of .aiida-testing-config.yml
 
-    Specifying CLI parameter --testing-config-action will raise if no config file is found.
-    Specifying CLI parameter --generate-testing-config-action results in config
-    template being written during test run.
+    testing_config_action :
+        Read config file if present ('read'), require config file ('require') or generate new config file ('generate').
     """
     config = Config.from_file()
 
@@ -84,9 +83,9 @@ def mock_code_factory(
     """
     Fixture to create a mock AiiDA Code.
 
-    Specifying CLI parameter --testing-config-action will raise if a required code label is not found.
-    Specifying CLI parameter --generate-testing-config-action results in config
-    template being written during test run.
+    testing_config_action :
+        Read config file if present ('read'), require config file ('require') or generate new config file ('generate').
+
 
     """
     def _get_mock_code(
@@ -94,7 +93,6 @@ def mock_code_factory(
         entry_point: str,
         data_dir_abspath: ty.Union[str, pathlib.Path],
         ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh'),
-        #ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh', '_scheduler-stderr.txt', '_scheduler-stdout.txt',),
         executable_name: str = '',
         config: dict = testing_config,
         config_action: str = testing_config_action,
@@ -103,8 +101,7 @@ def mock_code_factory(
         """
         Creates a mock AiiDA code. If the same inputs have been run previously,
         the results are copied over from the corresponding sub-directory of
-        the ``data_dir_abspath``. Otherwise, the code is executed if an
-        executable is specified in the configuration, or fails if it is not.
+        the ``data_dir_abspath``. Otherwise, the code is executed.
 
         Parameters
         ----------
@@ -118,15 +115,15 @@ def mock_code_factory(
             stored.
         ignore_files :
             A list of files which are not copied to the results directory
-            when the code is executed.
+            after the code has been executed.
         executable_name :
             Name of code executable to search for in PATH, if configuration file does not specify location already.
         config :
             Dict with contents of configuration file
         config_action :
-            Read config file if present ('read'), require config file ('require') or generate new config file ('generate').
+            If 'require', raise ValueError if config dictionary does not specify path of executable.
+            If 'generate', add new key (label) to config dictionary.
         generate_config :
-            Generate configuration file template, if it does not yet exist
         """
         # we want to set a custom prepend_text, which is why the code
         # can not be reused.

@@ -136,7 +136,3 @@ def replace_submit_file(executable_path: str) -> None:
             submit_file_res_lines.append(line)
     with open(SUBMIT_FILE, 'w') as submit_file:
         submit_file.write('\n'.join(submit_file_res_lines))
-
-
-# if __name__ == "__main__":
-#     run()
