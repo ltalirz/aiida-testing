@@ -76,6 +76,9 @@ def test_basic(mock_code_factory, generate_diff_inputs):  # pylint: disable=rede
     res, node = run_get_node(
         CalculationFactory(CALC_ENTRY_POINT), code=mock_code, **generate_diff_inputs()
     )
+    assert node.exit_status == 0, "diff calculation failed with exit status {}".format(
+        node.exit_status
+    )
     assert node.is_finished_ok
     check_diff_output(res)
 
