@@ -35,7 +35,10 @@ def pytest_addoption(parser):
              "generate new config file ('generate').",
     )
     parser.addoption(
-        "--regenerate-test-data", action="store_true", default=False, help="Regenerate test data."
+        "--mock-regenerate-test-data",
+        action="store_true",
+        default=False,
+        help="Regenerate test data."
     )
 
 
@@ -46,7 +49,7 @@ def testing_config_action(request):
 
 @pytest.fixture(scope='session')
 def mock_regenerate_test_data(request):
-    return request.config.getoption("--regenerate-test-data")
+    return request.config.getoption("--mock-regenerate-test-data")
 
 
 @pytest.fixture(scope='session')
@@ -85,10 +88,10 @@ def mock_code_factory(
         data_dir_abspath: ty.Union[str, pathlib.Path],
         ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh'),
         executable_name: str = '',
-        config: dict = testing_config,
-        config_action: str = testing_config_action,
-        regenerate_test_data: bool = mock_regenerate_test_data,
-    ):  # pylint: disable=too-many-arguments
+        _config: dict = testing_config,
+        _config_action: str = testing_config_action,
+        _regenerate_test_data: bool = mock_regenerate_test_data,
+    ):
         """
         Creates a mock AiiDA code. If the same inputs have been run previously,
         the results are copied over from the corresponding sub-directory of
@@ -109,12 +112,13 @@ def mock_code_factory(
             after the code has been executed.
         executable_name :
             Name of code executable to search for in PATH, if configuration file does not specify location already.
-        config :
+        _config :
             Dict with contents of configuration file
-        config_action :
+        _config_action :
             If 'require', raise ValueError if config dictionary does not specify path of executable.
             If 'generate', add new key (label) to config dictionary.
-        generate_config :
+        _regenerate_test_data :
+            If True, regenerate test data instead of reusing.
         """
         # we want to set a custom prepend_text, which is why the code
         # can not be reused.
@@ -134,15 +138,15 @@ def mock_code_factory(
             )
 
         # try determine path to actual code executable
-        mock_code_config = config.get('mock_code', {})
-        if config_action == ConfigActions.REQUIRE.value and label not in mock_code_config:
+        mock_code_config = _config.get('mock_code', {})
+        if _config_action == ConfigActions.REQUIRE.value and label not in mock_code_config:
             raise ValueError(
                 f"Configuration file {CONFIG_FILE_NAME} does not specify path to executable for code label '{label}'."
             )
         code_executable_path = mock_code_config.get(label, 'TO_SPECIFY')
         if (not code_executable_path) and executable_name:
             code_executable_path = shutil.which(executable_name) or 'NOT_FOUND'
-        if config_action == ConfigActions.GENERATE.value:
+        if _config_action == ConfigActions.GENERATE.value:
             mock_code_config[label] = code_executable_path
 
         code = Code(
@@ -157,7 +161,7 @@ def mock_code_factory(
                 export {EnvKeys.DATA_DIR.value}="{data_dir_abspath}"
                 export {EnvKeys.EXECUTABLE_PATH.value}="{code_executable_path}"
                 export {EnvKeys.IGNORE_FILES.value}="{':'.join(ignore_files)}"
-                export {EnvKeys.REGENERATE_DATA.value}={'True' if regenerate_test_data else 'False'}
+                export {EnvKeys.REGENERATE_DATA.value}={'True' if _regenerate_test_data else 'False'}
                 """
             )
         )

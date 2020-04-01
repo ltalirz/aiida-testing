@@ -81,7 +81,7 @@ class Config(collections.abc.MutableMapping):
         return self._dict.__delitem__(key)
 
     def __iter__(self):
-        return self._dict.__init__()
+        return self._dict.__iter__()
 
     def __len__(self):
         return self._dict.__len__()

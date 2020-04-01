@@ -131,7 +131,7 @@ def test_broken_code_require(mock_code_factory):
             data_dir_abspath=TEST_DATA_DIR,
             entry_point=CALC_ENTRY_POINT,
             ignore_files=('_aiidasubmit.sh', 'file?.txt'),
-            config_action='require',
+            _config_action='require',
         )
 
 
@@ -144,7 +144,7 @@ def test_broken_code_generate(mock_code_factory, testing_config):
         data_dir_abspath=TEST_DATA_DIR,
         entry_point=CALC_ENTRY_POINT,
         ignore_files=('_aiidasubmit.sh', 'file?.txt'),
-        config_action='generate',
+        _config_action='generate',
     )
     assert 'diff-broken' in testing_config.get('mock_code')
 
@@ -161,7 +161,7 @@ def test_regenerate_test_data(mock_code_factory, generate_diff_inputs):  # pylin
         data_dir_abspath=TEST_DATA_DIR,
         entry_point=CALC_ENTRY_POINT,
         ignore_files=('_aiidasubmit.sh', ),
-        regenerate_test_data=True,
+        _regenerate_test_data=True,
     )
 
     res, node = run_get_node(
