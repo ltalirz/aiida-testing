@@ -12,8 +12,8 @@ OUTPUT_PATHS = (
     Path('file1.txt'),
     Path('file2.txt'),
     Path('_aiidasubmit.sh'),
-    Path('subfolder/subfolder/file3.txt'),
-    Path('subfolder/subfolder/file4.txt'),
+    Path('my/subfolder/file3.txt'),
+    Path('my/subfolder/file4.txt'),
 )
 
 
@@ -44,14 +44,17 @@ def test_ignore_paths(run_directory, tmp_path_factory):  # pylint: disable=redef
 
     # ignore subfolder
     copy_files(
+        src_dir=run_directory, dest_dir=storage_directory, ignore_files=(), ignore_paths=('my/', )
+    )
+    copy_files(
         src_dir=run_directory,
         dest_dir=storage_directory,
         ignore_files=(),
-        ignore_paths=('subfolder/*', )
+        ignore_paths=('my/subfolder', )
     )
     assert (storage_directory / '_aiidasubmit.sh').is_file()
     assert (storage_directory / 'file2.txt').is_file()
-    assert not (storage_directory / 'subfolder' / 'subfolder' / 'file3.txt').is_file()
+    assert not (storage_directory / 'my' / 'subfolder' / 'file3.txt').is_file()
 
     # ignore only specific file (from subfolder)
     copy_files(
@@ -60,8 +63,8 @@ def test_ignore_paths(run_directory, tmp_path_factory):  # pylint: disable=redef
         ignore_files=('file3.txt', ),
         ignore_paths=()
     )
-    assert not (storage_directory / 'subfolder' / 'subfolder' / 'file3.txt').is_file()
+    assert not (storage_directory / 'my' / 'subfolder' / 'file3.txt').is_file()
 
     # all should be there
     copy_files(src_dir=run_directory, dest_dir=storage_directory, ignore_files=(), ignore_paths=())
-    assert (storage_directory / 'subfolder' / 'subfolder' / 'file3.txt').is_file()
+    assert (storage_directory / 'my' / 'subfolder' / 'file3.txt').is_file()

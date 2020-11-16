@@ -137,22 +137,27 @@ def copy_files(
         destination.
     :param ignore_paths: A list of paths (UNIX shell style patterns allowed) which are not copied to the destination.
     """
-    exclude_paths: ty.Set = {
-        filepath.relative_to(src_dir)
-        for path in ignore_paths for filepath in src_dir.rglob(path)
-    }
+    exclude_paths: ty.Set = {filepath for path in ignore_paths for filepath in src_dir.rglob(path)}
+    exclude_files = {path.relative_to(src_dir) for path in exclude_paths if path.is_file()}
+    exclude_dirs = {path.relative_to(src_dir) for path in exclude_paths if path.is_dir()}
 
     # Here we rely on getting the directory name before
     # accessing its content, hence using os.walk.
     for dirpath, _, filenames in os.walk(src_dir):
         relative_dir = Path(dirpath).relative_to(src_dir)
+        dirs_to_check = list(relative_dir.parents) + [relative_dir]
 
         if relative_dir.parts and relative_dir.parts[0] == ('.aiida'):
             continue
+
+        if any(exclude_dir in dirs_to_check for exclude_dir in exclude_dirs):
+            continue
+
         for filename in filenames:
             if any(fnmatch.fnmatch(filename, expr) for expr in ignore_files):
                 continue
-            if relative_dir / filename in exclude_paths:
+
+            if relative_dir / filename in exclude_files:
                 continue
 
             os.makedirs(dest_dir / relative_dir, exist_ok=True)
