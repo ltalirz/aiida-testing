@@ -9,6 +9,8 @@ import inspect
 import pathlib
 import typing as ty
 import warnings
+import collections
+
 import click
 import pytest
 
@@ -90,8 +92,8 @@ def mock_code_factory(
         label: str,
         entry_point: str,
         data_dir_abspath: ty.Union[str, pathlib.Path],
-        ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh'),
-        ignore_paths: ty.Iterable[str] = ('_aiidasubmit.sh'),
+        ignore_files: ty.Iterable[str] = ('_aiidasubmit.sh', ),
+        ignore_paths: ty.Iterable[str] = ('_aiidasubmit.sh', ),
         executable_name: str = '',
         _config: dict = testing_config,
         _config_action: str = testing_config_action,
@@ -131,11 +133,16 @@ def mock_code_factory(
         .. deprecated:: 0.1.0
             Keyword `ingore_files` is deprecated and will be removed in `v1.0`. Use `ignore_paths` instead.
         """
-        if ignore_files != ('_aiidasubmit.sh'):
+        if ignore_files != ('_aiidasubmit.sh', ):
             warnings.warn(
                 'keyword `ignore_files` is deprecated and will be removed in `v1.0`. Use `ignore_paths` instead.',
                 AiidaDeprecationWarning
             )  # pylint: disable=no-member
+
+        # It's easy to forget the final comma and pass a string, e.g. `ignore_paths = ('_aiidasubmit.sh')`
+        for arg in (ignore_paths, ignore_files):
+            assert isinstance(arg, collections.Iterable) and not isinstance(arg, str), \
+                f"'ignore_files' and 'ignore_paths' arguments must be tuples or lists, found {type(arg)}"
 
         # we want to set a custom prepend_text, which is why the code
         # can not be reused.
