@@ -13,12 +13,44 @@ import typing as ty
 import fnmatch
 from pathlib import Path
 
+try:
+    from mpi4py import MPI
+    MPI_COMM = MPI.COMM_WORLD
+    MPI_RANK = MPI_COMM.Get_rank()
+except ImportError:
+    MPI_RANK = None
+
 from ._env_keys import EnvKeys
 
 SUBMIT_FILE = '_aiidasubmit.sh'
 
 
-def run() -> None:
+def run():
+    """
+    Run the mock AiiDA code. If the corresponding result exists, it is
+    simply copied over to the current working directory. Otherwise,
+    the code will replace the executable in the aiidasubmit file,
+    launch the "real" code, and then copy the results into the data
+    directory.
+    """
+
+    if MPI_RANK == 0 or MPI_RANK is None:
+        run_executable, res_dir = initialize()
+    else:
+        run_executable, res_dir = None, ""
+
+    run_executable = MPI_COMM.bcast(run_executable, root=0)
+    res_dir = MPI_COMM.bcast(res_dir, root=0)
+
+    if run_executable:
+        executable_path = os.environ[EnvKeys.EXECUTABLE_PATH.value]
+        subprocess.call([executable_path, *sys.argv[1:]])
+
+        if MPI_RANK == 0 or MPI_RANK is None:
+            store_results(res_dir)
+
+
+def initialize() -> [bool, str]:
     """
     Run the mock AiiDA code. If the corresponding result exists, it is
     simply copied over to the current working directory. Otherwise,
@@ -30,8 +62,6 @@ def run() -> None:
     label = os.environ[EnvKeys.LABEL.value]
     data_dir = os.environ[EnvKeys.DATA_DIR.value]
     executable_path = os.environ[EnvKeys.EXECUTABLE_PATH.value]
-    ignore_files = os.environ[EnvKeys.IGNORE_FILES.value].split(':')
-    ignore_paths = os.environ[EnvKeys.IGNORE_PATHS.value].split(':')
     regenerate_data = os.environ[EnvKeys.REGENERATE_DATA.value] == 'True'
 
     hash_digest = get_hash().hexdigest()
@@ -41,23 +71,8 @@ def run() -> None:
     if regenerate_data and res_dir.exists():
         shutil.rmtree(res_dir)
 
-    if not res_dir.exists():
-        if not executable_path:
-            sys.exit("No existing output, and no executable specified.")
+    if res_dir.exists():
 
-        # replace executable path in submit file and run calculation
-        subprocess.call([executable_path, *sys.argv[1:]])
-
-        # back up results to data directory
-        os.makedirs(res_dir)
-        copy_files(
-            src_dir=Path('.'),
-            dest_dir=res_dir,
-            ignore_files=ignore_files,
-            ignore_paths=ignore_paths
-        )
-
-    else:
         # copy outputs from data directory to working directory
         for path in res_dir.iterdir():
             if path.is_dir():
@@ -66,7 +81,33 @@ def run() -> None:
             elif path.is_file():
                 shutil.copyfile(path, path.name)
             else:
-                sys.exit(f"Can not copy '{path.name}'.")
+                _exit(f"Can not copy '{path.name}'.")
+
+        return False, res_dir
+
+    else:
+        if not executable_path:
+            _exit("No existing output, and no executable specified.")
+
+        return True, res_dir
+
+
+def store_results(res_dir):
+    ignore_files = os.environ[EnvKeys.IGNORE_FILES.value].split(':')
+    ignore_paths = os.environ[EnvKeys.IGNORE_PATHS.value].split(':')
+
+    # back up results to data directory
+    os.makedirs(res_dir)
+    copy_files(
+        src_dir=Path('.'), dest_dir=res_dir, ignore_files=ignore_files, ignore_paths=ignore_paths
+    )
+
+
+def _exit(msg):
+    if MPI_RANK == 0:
+        # If running with MPI, also kill other MPI processes
+        MPI_COMM.Abort(msg)
+    sys.exit(msg)
 
 
 def get_hash() -> 'hashlib._Hash':
