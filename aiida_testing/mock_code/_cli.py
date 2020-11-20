@@ -26,48 +26,7 @@ def run() -> None:
     launch the "real" code, and then copy the results into the data
     directory.
     """
-    # Get environment variables
-    label = os.environ[EnvKeys.LABEL.value]
-    data_dir = os.environ[EnvKeys.DATA_DIR.value]
-    executable_path = os.environ[EnvKeys.EXECUTABLE_PATH.value]
-    ignore_files = os.environ[EnvKeys.IGNORE_FILES.value].split(':')
-    ignore_paths = os.environ[EnvKeys.IGNORE_PATHS.value].split(':')
-    regenerate_data = os.environ[EnvKeys.REGENERATE_DATA.value] == 'True'
-
-    hash_digest = get_hash().hexdigest()
-
-    res_dir = Path(data_dir) / f"mock-{label}-{hash_digest}"
-
-    if regenerate_data and res_dir.exists():
-        shutil.rmtree(res_dir)
-
-    if not res_dir.exists():
-        if not executable_path:
-            sys.exit("No existing output, and no executable specified.")
-
-        # replace executable path in submit file and run calculation
-        replace_submit_file(executable_path=executable_path)
-        subprocess.call(['bash', SUBMIT_FILE])
-
-        # back up results to data directory
-        os.makedirs(res_dir)
-        copy_files(
-            src_dir=Path('.'),
-            dest_dir=res_dir,
-            ignore_files=ignore_files,
-            ignore_paths=ignore_paths
-        )
-
-    else:
-        # copy outputs from data directory to working directory
-        for path in res_dir.iterdir():
-            if path.is_dir():
-                shutil.rmtree(path.name, ignore_errors=True)
-                shutil.copytree(path, path.name)
-            elif path.is_file():
-                shutil.copyfile(path, path.name)
-            else:
-                sys.exit(f"Can not copy '{path.name}'.")
+    pass
 
 
 def get_hash() -> 'hashlib._Hash':
@@ -104,12 +63,12 @@ def strip_submit_content(aiidasubmit_content_bytes: bytes) -> bytes:
     return '\n'.join(lines).encode()
 
 
-def replace_submit_file(executable_path: str) -> None:
+def replace_submit_file(executable_path: str, working_directory='.') -> None:
     """
     Replace the executable specified in the AiiDA submit file, and
     strip the AIIDA_MOCK environment variables.
     """
-    with open(SUBMIT_FILE, 'r') as submit_file:
+    with open(Path(working_directory) / SUBMIT_FILE, 'r') as submit_file:
         submit_file_content = submit_file.read()
 
     submit_file_res_lines = []
@@ -122,7 +81,7 @@ def replace_submit_file(executable_path: str) -> None:
             )
         else:
             submit_file_res_lines.append(line)
-    with open(SUBMIT_FILE, 'w') as submit_file:
+    with open(Path(working_directory) / SUBMIT_FILE, 'w') as submit_file:
         submit_file.write('\n'.join(submit_file_res_lines))
 
 

@@ -20,11 +20,8 @@ from ._env_keys import EnvKeys
 from .._config import Config, CONFIG_FILE_NAME, ConfigActions
 
 __all__ = (
-    "pytest_addoption",
-    "testing_config_action",
-    "mock_regenerate_test_data",
-    "testing_config",
-    "mock_code_factory",
+    "pytest_addoption", "testing_config_action", "mock_regenerate_test_data", "testing_config",
+    "mock_code_factory", "patch_calculation_submission"
 )
 
 
@@ -191,6 +188,113 @@ def mock_code_factory(
         )
 
         code.store()
+
+        code.set_extra(EnvKeys.LABEL.value, label)
+        code.set_extra(EnvKeys.DATA_DIR.value, str(data_dir_abspath))
+        code.set_extra(EnvKeys.EXECUTABLE_PATH.value, str(code_executable_path))
+        code.set_extra(EnvKeys.IGNORE_FILES.value, ignore_files)
+        code.set_extra(EnvKeys.IGNORE_PATHS.value, ignore_paths)
+        code.set_extra(EnvKeys.REGENERATE_DATA.value, _regenerate_test_data)
+
         return code
 
     return _get_mock_code
+
+
+@pytest.fixture(scope='function', autouse=True)
+def patch_calculation_submission(monkeypatch):
+    """Patch execmanager.submit_calculation such as to take data from test data directory.
+    """
+    from aiida_testing.mock_code._env_keys import EnvKeys
+    from aiida_testing.mock_code._cli import get_hash, replace_submit_file
+    from aiida.engine.daemon import execmanager
+    import shutil
+    import sys
+    from pathlib import Path
+
+    def mock_submit_calculation(calculation, transport):
+        """
+        Run the mock AiiDA code. If the corresponding result exists, it is
+        simply copied over to the current working directory. Otherwise,
+        the code will replace the executable in the aiidasubmit file,
+        launch the "real" code, and then copy the results into the data
+        directory.
+        :param calculation:
+        :param transport:
+        :return:
+        """
+        code = calculation.inputs.code
+        label = code.get_extra(EnvKeys.LABEL.value)
+        data_dir = code.get_extra(EnvKeys.DATA_DIR.value)
+        executable_path = code.get_extra(EnvKeys.EXECUTABLE_PATH.value)
+        ignore_files = code.get_extra(EnvKeys.IGNORE_FILES.value)
+        ignore_paths = code.get_extra(EnvKeys.IGNORE_PATHS.value)
+        regenerate_data = code.get_extra(EnvKeys.REGENERATE_DATA.value)
+
+        hash_digest = get_hash().hexdigest()
+
+        res_dir = Path(data_dir) / f"mock-{label}-{hash_digest}"
+
+        if regenerate_data and res_dir.exists():
+            shutil.rmtree(res_dir)
+
+        #import pdb; pdb.set_trace()
+        if not res_dir.exists():
+            if not executable_path:
+                sys.exit("No existing output, and no executable specified.")
+
+            # replace executable path in submit file and run calculation
+            workdir = calculation.get_remote_workdir()
+            replace_submit_file(executable_path=executable_path, working_directory=workdir)
+            #subprocess.call(['bash', SUBMIT_FILE])
+
+            ### Start copy of execmanager.submit_calculation
+            transport.chdir(workdir)
+            #func(calculation, transport)
+            job_id = calculation.get_job_id()
+
+            # If the `job_id` attribute is already set, that means this function was already executed once and the scheduler
+            # submit command was successful as the job id it returned was set on the node. This scenario can happen when the
+            # daemon runner gets shutdown right after accomplishing the submission task, but before it gets the chance to
+            # finalize the state transition of the `CalcJob` to the `UPDATE` transport task. Since the job is already submitted
+            # we do not want to submit it a second time, so we simply return the existing job id here.
+            if job_id is not None:
+                return job_id
+
+            scheduler = calculation.computer.get_scheduler()
+            scheduler.set_transport(transport)
+
+            submit_script_filename = calculation.get_option('submit_script_filename')
+            workdir = calculation.get_remote_workdir()
+            job_id = scheduler.submit_from_script(workdir, submit_script_filename)
+            calculation.set_job_id(job_id)
+
+            return job_id
+
+            ### End copy of execmanager.submit_calculation
+
+            ## Note: this backup will have to be done later, since the calculation may not be finished here
+            # # back up results to data directory
+            # os.makedirs(res_dir)
+            # copy_files(
+            #     src_dir=Path('.'),
+            #     dest_dir=res_dir,
+            #     ignore_files=ignore_files,
+            #     ignore_paths=ignore_paths
+            # )
+
+        else:
+            # copy outputs from data directory to working directory
+            for path in res_dir.iterdir():
+                if path.is_dir():
+                    shutil.rmtree(path.name, ignore_errors=True)
+                    shutil.copytree(path, path.name)
+                elif path.is_file():
+                    shutil.copyfile(path, path.name)
+                else:
+                    sys.exit(f"Can not copy '{path.name}'.")
+
+            # return a non-existing jobid
+            return -1
+
+    monkeypatch.setattr(execmanager, 'submit_calculation', mock_submit_calculation)
