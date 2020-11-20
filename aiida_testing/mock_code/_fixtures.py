@@ -15,7 +15,6 @@ import click
 import pytest
 
 from aiida.orm import Code
-from aiida.common.warnings import AiidaDeprecationWarning
 
 from ._env_keys import EnvKeys
 from .._config import Config, CONFIG_FILE_NAME, ConfigActions
@@ -136,7 +135,7 @@ def mock_code_factory(
         if ignore_files != ('_aiidasubmit.sh', ):
             warnings.warn(
                 'keyword `ignore_files` is deprecated and will be removed in `v1.0`. Use `ignore_paths` instead.',
-                AiidaDeprecationWarning
+                DeprecationWarning
             )  # pylint: disable=no-member
 
         # It's easy to forget the final comma and pass a string, e.g. `ignore_paths = ('_aiidasubmit.sh')`
