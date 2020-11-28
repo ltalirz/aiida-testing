@@ -212,6 +212,8 @@ def patch_calculation_submission(monkeypatch):
     import sys
     from pathlib import Path
 
+    unpatched_func = execmanager.submit_calculation
+
     def mock_submit_calculation(calculation, transport):
         """
         Run the mock AiiDA code. If the corresponding result exists, it is
@@ -244,34 +246,13 @@ def patch_calculation_submission(monkeypatch):
                 sys.exit("No existing output, and no executable specified.")
 
             # replace executable path in submit file and run calculation
+            # TODO: replacing the submit file shouldn't be needed if
+            # the mock code is handled via monkeypatching
             workdir = calculation.get_remote_workdir()
             replace_submit_file(executable_path=executable_path, working_directory=workdir)
             #subprocess.call(['bash', SUBMIT_FILE])
 
-            ### Start copy of execmanager.submit_calculation
-            transport.chdir(workdir)
-            #func(calculation, transport)
-            job_id = calculation.get_job_id()
-
-            # If the `job_id` attribute is already set, that means this function was already executed once and the scheduler
-            # submit command was successful as the job id it returned was set on the node. This scenario can happen when the
-            # daemon runner gets shutdown right after accomplishing the submission task, but before it gets the chance to
-            # finalize the state transition of the `CalcJob` to the `UPDATE` transport task. Since the job is already submitted
-            # we do not want to submit it a second time, so we simply return the existing job id here.
-            if job_id is not None:
-                return job_id
-
-            scheduler = calculation.computer.get_scheduler()
-            scheduler.set_transport(transport)
-
-            submit_script_filename = calculation.get_option('submit_script_filename')
-            workdir = calculation.get_remote_workdir()
-            job_id = scheduler.submit_from_script(workdir, submit_script_filename)
-            calculation.set_job_id(job_id)
-
-            return job_id
-
-            ### End copy of execmanager.submit_calculation
+            unpatched_func(calculation, transport)
 
             ## Note: this backup will have to be done later, since the calculation may not be finished here
             # # back up results to data directory
