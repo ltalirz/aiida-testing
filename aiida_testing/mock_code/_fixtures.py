@@ -3,6 +3,8 @@
 Defines a pytest fixture for creating mock AiiDA codes.
 """
 
+import os
+import sys
 import uuid
 import shutil
 import inspect
@@ -14,14 +16,16 @@ import collections
 import click
 import pytest
 
+from aiida.engine.daemon import execmanager
 from aiida.orm import Code
 
 from ._env_keys import EnvKeys
+from ._cli import get_hash, replace_submit_file, copy_files
 from .._config import Config, CONFIG_FILE_NAME, ConfigActions
 
 __all__ = (
     "pytest_addoption", "testing_config_action", "mock_regenerate_test_data", "testing_config",
-    "mock_code_factory", "patch_calculation_submission"
+    "mock_code_factory", "patch_calculation_execution"
 )
 
 
@@ -74,7 +78,8 @@ def testing_config(testing_config_action):  # pylint: disable=redefined-outer-na
 
 @pytest.fixture(scope='function')
 def mock_code_factory(
-    aiida_localhost, testing_config, testing_config_action, mock_regenerate_test_data
+    aiida_localhost, testing_config, testing_config_action, mock_regenerate_test_data,
+    patch_calculation_execution
 ):  # pylint: disable=redefined-outer-name
     """
     Fixture to create a mock AiiDA Code.
@@ -201,18 +206,17 @@ def mock_code_factory(
     return _get_mock_code
 
 
+_CALC_NEEDS_COPY_TO_RES_DIR_KEY = '_aiida_testing_needs_copy_to_datadir'
+_CALC_RES_DIR_KEY = '_aiida_testing_res_dir'
+
+
 @pytest.fixture(scope='function', autouse=True)
-def patch_calculation_submission(monkeypatch):
+def patch_calculation_execution(monkeypatch):
     """Patch execmanager.submit_calculation such as to take data from test data directory.
     """
-    from aiida_testing.mock_code._env_keys import EnvKeys
-    from aiida_testing.mock_code._cli import get_hash, replace_submit_file
-    from aiida.engine.daemon import execmanager
-    import shutil
-    import sys
-    from pathlib import Path
 
-    unpatched_func = execmanager.submit_calculation
+    unpatched_submit_calculation = execmanager.submit_calculation
+    unpatched_retrieve_calculation = execmanager.retrieve_calculation
 
     def mock_submit_calculation(calculation, transport):
         """
@@ -229,13 +233,18 @@ def patch_calculation_submission(monkeypatch):
         label = code.get_extra(EnvKeys.LABEL.value)
         data_dir = code.get_extra(EnvKeys.DATA_DIR.value)
         executable_path = code.get_extra(EnvKeys.EXECUTABLE_PATH.value)
-        ignore_files = code.get_extra(EnvKeys.IGNORE_FILES.value)
-        ignore_paths = code.get_extra(EnvKeys.IGNORE_PATHS.value)
+
         regenerate_data = code.get_extra(EnvKeys.REGENERATE_DATA.value)
 
+        print(os.getcwd())
+        # TODO: This uses the contents of CWD, which is wherever the
+        # test are executed from. Instead it should use the directory
+        # where the calculation is run from.
         hash_digest = get_hash().hexdigest()
 
-        res_dir = Path(data_dir) / f"mock-{label}-{hash_digest}"
+        res_dir = pathlib.Path(data_dir) / f"mock-{label}-{hash_digest}"
+
+        calculation.set_extra(_CALC_RES_DIR_KEY, str(res_dir.absolute()))
 
         if regenerate_data and res_dir.exists():
             shutil.rmtree(res_dir)
@@ -252,19 +261,13 @@ def patch_calculation_submission(monkeypatch):
             replace_submit_file(executable_path=executable_path, working_directory=workdir)
             #subprocess.call(['bash', SUBMIT_FILE])
 
-            unpatched_func(calculation, transport)
+            unpatched_submit_calculation(calculation, transport)
 
             ## Note: this backup will have to be done later, since the calculation may not be finished here
             # # back up results to data directory
-            # os.makedirs(res_dir)
-            # copy_files(
-            #     src_dir=Path('.'),
-            #     dest_dir=res_dir,
-            #     ignore_files=ignore_files,
-            #     ignore_paths=ignore_paths
-            # )
 
         else:
+            calculation.set_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, True)
             # copy outputs from data directory to working directory
             for path in res_dir.iterdir():
                 if path.is_dir():
@@ -278,4 +281,24 @@ def patch_calculation_submission(monkeypatch):
             # return a non-existing jobid
             return -1
 
+    def mock_retrieve_calculation(calculation, transport, retrieved_temporary_folder):
+        # TODO: patch here
+        if calculation.get_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, False):
+            code = calculation.inputs.code
+
+            ignore_files = code.get_extra(EnvKeys.IGNORE_FILES.value)
+            ignore_paths = code.get_extra(EnvKeys.IGNORE_PATHS.value)
+
+            res_dir = calculation.get_extra(_CALC_RES_DIR_KEY)
+            os.makedirs(res_dir)
+            copy_files(
+                src_dir=pathlib.Path('.'),
+                dest_dir=res_dir,
+                ignore_files=ignore_files,
+                ignore_paths=ignore_paths
+            )
+
+        unpatched_retrieve_calculation(calculation, transport, retrieved_temporary_folder)
+
     monkeypatch.setattr(execmanager, 'submit_calculation', mock_submit_calculation)
+    monkeypatch.setattr(execmanager, 'retrieve_calculation', mock_retrieve_calculation)
