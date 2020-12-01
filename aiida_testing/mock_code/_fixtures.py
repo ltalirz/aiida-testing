@@ -88,7 +88,7 @@ def mock_code_factory(
 
 
     """
-    def _get_mock_code(
+    def _get_mock_code( # pylint: disable=too-many-arguments
         label: str,
         entry_point: str,
         data_dir_abspath: ty.Union[str, pathlib.Path],
@@ -98,7 +98,7 @@ def mock_code_factory(
         _config: dict = testing_config,
         _config_action: str = testing_config_action,
         _regenerate_test_data: bool = mock_regenerate_test_data,
-    ):  # pylint: disable=too-many-arguments
+    ) -> Code:
         """
         Creates a mock AiiDA code. If the same inputs have been run previously,
         the results are copied over from the corresponding sub-directory of

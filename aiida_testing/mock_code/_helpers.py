@@ -6,22 +6,25 @@ Implements the executable for running a mock AiiDA code.
 
 import os
 import shutil
+import pathlib
 import hashlib
 import typing as ty
 import fnmatch
 from pathlib import Path
 
+from aiida import orm
+
 SUBMIT_FILE = '_aiidasubmit.sh'
 
 
-def get_hash(dirpath, code) -> 'hashlib._Hash':
+def get_hash(dirpath: pathlib.Path, code: orm.Code) -> 'hashlib._Hash':
     """
     Get the MD5 hash for the current working directory.
     """
     md5sum = hashlib.md5()
     # Here the order needs to be consistent, thus globbing
     # with 'sorted'.
-    for path in sorted(Path(dirpath).glob('**/*')):
+    for path in sorted(dirpath.glob('**/*')):
         if path.is_file() and not path.match('.aiida/**'):
             with open(path, 'rb') as file_obj:
                 file_content_bytes = file_obj.read()
@@ -33,7 +36,7 @@ def get_hash(dirpath, code) -> 'hashlib._Hash':
     return md5sum
 
 
-def strip_submit_content(aiidasubmit_content_bytes: bytes, code) -> bytes:
+def strip_submit_content(aiidasubmit_content_bytes: bytes, code: orm.Code) -> bytes:
     """
     Helper function to strip content which changes between
     test runs from the aiidasubmit file.
