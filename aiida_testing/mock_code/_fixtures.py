@@ -18,7 +18,7 @@ import pytest
 from aiida.engine.daemon import execmanager
 from aiida.orm import Code
 
-from ._env_keys import EnvKeys
+from ._extra_keys import CodeExtraKeys, CalculationExtraKeys
 from ._helpers import get_hash, copy_files
 from .._config import Config, CONFIG_FILE_NAME, ConfigActions
 
@@ -186,20 +186,16 @@ def mock_code_factory(
 
         code.store()
 
-        code.set_extra(EnvKeys.LABEL.value, label)
-        code.set_extra(EnvKeys.DATA_DIR.value, str(data_dir_abspath))
-        code.set_extra(EnvKeys.EXECUTABLE_PATH.value, str(code_executable_path))
-        code.set_extra(EnvKeys.IGNORE_FILES.value, ignore_files)
-        code.set_extra(EnvKeys.IGNORE_PATHS.value, ignore_paths)
-        code.set_extra(EnvKeys.REGENERATE_DATA.value, _regenerate_test_data)
+        code.set_extra(CodeExtraKeys.LABEL.value, label)
+        code.set_extra(CodeExtraKeys.DATA_DIR.value, str(data_dir_abspath))
+        code.set_extra(CodeExtraKeys.EXECUTABLE_PATH.value, str(code_executable_path))
+        code.set_extra(CodeExtraKeys.IGNORE_FILES.value, ignore_files)
+        code.set_extra(CodeExtraKeys.IGNORE_PATHS.value, ignore_paths)
+        code.set_extra(CodeExtraKeys.REGENERATE_DATA.value, _regenerate_test_data)
 
         return code
 
     return _get_mock_code
-
-
-_CALC_NEEDS_COPY_TO_RES_DIR_KEY = '_aiida_testing_needs_copy_to_datadir'
-_CALC_RES_DIR_KEY = '_aiida_testing_res_dir'
 
 
 @pytest.fixture(scope='function', autouse=True)
@@ -222,17 +218,17 @@ def patch_calculation_execution(monkeypatch):
         :return:
         """
         code = calculation.inputs.code
-        label = code.get_extra(EnvKeys.LABEL.value)
-        data_dir = code.get_extra(EnvKeys.DATA_DIR.value)
-        executable_path = code.get_extra(EnvKeys.EXECUTABLE_PATH.value)
+        label = code.get_extra(CodeExtraKeys.LABEL.value)
+        data_dir = code.get_extra(CodeExtraKeys.DATA_DIR.value)
+        executable_path = code.get_extra(CodeExtraKeys.EXECUTABLE_PATH.value)
 
-        regenerate_data = code.get_extra(EnvKeys.REGENERATE_DATA.value)
+        regenerate_data = code.get_extra(CodeExtraKeys.REGENERATE_DATA.value)
 
         workdir = pathlib.Path(calculation.get_remote_workdir())
         hash_digest = get_hash(workdir, code=code).hexdigest()
         res_dir = pathlib.Path(data_dir) / f"mock-{label}-{hash_digest}"
 
-        calculation.set_extra(_CALC_RES_DIR_KEY, str(res_dir.absolute()))
+        calculation.set_extra(CalculationExtraKeys.RES_DIR.value, str(res_dir.absolute()))
 
         if regenerate_data and res_dir.exists():
             shutil.rmtree(res_dir)
@@ -241,7 +237,7 @@ def patch_calculation_execution(monkeypatch):
             if not executable_path:
                 sys.exit("No existing output, and no executable specified.")
 
-            calculation.set_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, True)
+            calculation.set_extra(CalculationExtraKeys.NEEDS_COPY_TO_RES_DIR.value, True)
             res_jobid = unpatched_submit_calculation(calculation, transport)
 
         else:
@@ -262,13 +258,13 @@ def patch_calculation_execution(monkeypatch):
 
     def mock_retrieve_calculation(calculation, transport, retrieved_temporary_folder):
         # back up results to data directory
-        if calculation.get_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, False):
+        if calculation.get_extra(CalculationExtraKeys.NEEDS_COPY_TO_RES_DIR.value, False):
             code = calculation.inputs.code
 
-            ignore_files = code.get_extra(EnvKeys.IGNORE_FILES.value)
-            ignore_paths = code.get_extra(EnvKeys.IGNORE_PATHS.value)
+            ignore_files = code.get_extra(CodeExtraKeys.IGNORE_FILES.value)
+            ignore_paths = code.get_extra(CodeExtraKeys.IGNORE_PATHS.value)
 
-            res_dir = calculation.get_extra(_CALC_RES_DIR_KEY)
+            res_dir = calculation.get_extra(CalculationExtraKeys.RES_DIR.value)
             os.makedirs(res_dir)
             copy_files(
                 src_dir=pathlib.Path(calculation.get_remote_workdir()),
