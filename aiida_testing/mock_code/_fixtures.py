@@ -7,7 +7,6 @@ import os
 import sys
 import uuid
 import shutil
-import inspect
 import pathlib
 import typing as ty
 import warnings
@@ -20,7 +19,7 @@ from aiida.engine.daemon import execmanager
 from aiida.orm import Code
 
 from ._env_keys import EnvKeys
-from ._cli import get_hash, replace_submit_file, copy_files
+from ._helpers import get_hash, copy_files
 from .._config import Config, CONFIG_FILE_NAME, ConfigActions
 
 __all__ = (
@@ -80,7 +79,7 @@ def testing_config(testing_config_action):  # pylint: disable=redefined-outer-na
 def mock_code_factory(
     aiida_localhost, testing_config, testing_config_action, mock_regenerate_test_data,
     patch_calculation_execution
-):  # pylint: disable=redefined-outer-name
+):  # pylint: disable=redefined-outer-name, unused-argument
     """
     Fixture to create a mock AiiDA Code.
 
@@ -174,23 +173,16 @@ def mock_code_factory(
         if _config_action == ConfigActions.GENERATE.value:
             mock_code_config[label] = code_executable_path
 
+        if code_executable_path in {'TO_SPECIFY', 'NOT_FOUND'}:
+            remote_executable_path = mock_executable_path
+        else:
+            remote_executable_path = code_executable_path
+
         code = Code(
             input_plugin_name=entry_point,
-            remote_computer_exec=[aiida_localhost, mock_executable_path]
+            remote_computer_exec=[aiida_localhost, remote_executable_path]
         )
         code.label = code_label
-        code.set_prepend_text(
-            inspect.cleandoc(
-                f"""
-                export {EnvKeys.LABEL.value}="{label}"
-                export {EnvKeys.DATA_DIR.value}="{data_dir_abspath}"
-                export {EnvKeys.EXECUTABLE_PATH.value}="{code_executable_path}"
-                export {EnvKeys.IGNORE_FILES.value}="{':'.join(ignore_files)}"
-                export {EnvKeys.IGNORE_PATHS.value}="{':'.join(ignore_paths)}"
-                export {EnvKeys.REGENERATE_DATA.value}={'True' if _regenerate_test_data else 'False'}
-                """
-            )
-        )
 
         code.store()
 
@@ -236,12 +228,8 @@ def patch_calculation_execution(monkeypatch):
 
         regenerate_data = code.get_extra(EnvKeys.REGENERATE_DATA.value)
 
-        print(os.getcwd())
-        # TODO: This uses the contents of CWD, which is wherever the
-        # test are executed from. Instead it should use the directory
-        # where the calculation is run from.
-        hash_digest = get_hash().hexdigest()
-
+        workdir = pathlib.Path(calculation.get_remote_workdir())
+        hash_digest = get_hash(workdir, code=code).hexdigest()
         res_dir = pathlib.Path(data_dir) / f"mock-{label}-{hash_digest}"
 
         calculation.set_extra(_CALC_RES_DIR_KEY, str(res_dir.absolute()))
@@ -249,40 +237,31 @@ def patch_calculation_execution(monkeypatch):
         if regenerate_data and res_dir.exists():
             shutil.rmtree(res_dir)
 
-        #import pdb; pdb.set_trace()
         if not res_dir.exists():
             if not executable_path:
                 sys.exit("No existing output, and no executable specified.")
 
-            # replace executable path in submit file and run calculation
-            # TODO: replacing the submit file shouldn't be needed if
-            # the mock code is handled via monkeypatching
-            workdir = calculation.get_remote_workdir()
-            replace_submit_file(executable_path=executable_path, working_directory=workdir)
-            #subprocess.call(['bash', SUBMIT_FILE])
-
-            unpatched_submit_calculation(calculation, transport)
-
-            ## Note: this backup will have to be done later, since the calculation may not be finished here
-            # # back up results to data directory
+            calculation.set_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, True)
+            res_jobid = unpatched_submit_calculation(calculation, transport)
 
         else:
-            calculation.set_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, True)
             # copy outputs from data directory to working directory
             for path in res_dir.iterdir():
+                out_path = workdir / path.name
                 if path.is_dir():
-                    shutil.rmtree(path.name, ignore_errors=True)
-                    shutil.copytree(path, path.name)
+                    shutil.rmtree(out_path, ignore_errors=True)
+                    shutil.copytree(path, out_path)
                 elif path.is_file():
-                    shutil.copyfile(path, path.name)
+                    shutil.copyfile(path, out_path)
                 else:
                     sys.exit(f"Can not copy '{path.name}'.")
 
             # return a non-existing jobid
-            return -1
+            res_jobid = -1
+        return res_jobid
 
     def mock_retrieve_calculation(calculation, transport, retrieved_temporary_folder):
-        # TODO: patch here
+        # back up results to data directory
         if calculation.get_extra(_CALC_NEEDS_COPY_TO_RES_DIR_KEY, False):
             code = calculation.inputs.code
 
@@ -292,7 +271,7 @@ def patch_calculation_execution(monkeypatch):
             res_dir = calculation.get_extra(_CALC_RES_DIR_KEY)
             os.makedirs(res_dir)
             copy_files(
-                src_dir=pathlib.Path('.'),
+                src_dir=pathlib.Path(calculation.get_remote_workdir()),
                 dest_dir=res_dir,
                 ignore_files=ignore_files,
                 ignore_paths=ignore_paths
